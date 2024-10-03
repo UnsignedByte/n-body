@@ -20,9 +20,9 @@
 template <unsigned int blockSize>
 __global__ void nbody_forces(const float *__restrict__ px, const float *__restrict__ py, float *__restrict__ fx, float *__restrict__ fy)
 {
-  __shared__ float sh_px[blockSize], sh_py[blockSize];
+  const unsigned int tid = threadIdx.x;
+  const unsigned int laneid = tid & 31;
 
-  unsigned int tid = threadIdx.x;
   for (unsigned int i = blockIdx.x * blockSize + tid; i < N; i += gridDim.x * blockSize)
   {
 
@@ -37,17 +37,15 @@ __global__ void nbody_forces(const float *__restrict__ px, const float *__restri
     for (unsigned int block_i = 0; block_i < N; block_i += blockSize)
     {
       // Load shared memory
-      sh_px[tid] = px[block_i + tid];
-      sh_py[tid] = py[block_i + tid];
-
-      __syncthreads();
+      float my_x = px[block_i + laneid];
+      float my_y = py[block_i + laneid];
 
 #pragma unroll
-      // Compute forces
-      for (unsigned int j = 0; j < blockSize; j++)
+      // Compute forces in the wrap
+      for (unsigned int j = 0; j < 32; j++)
       {
-        float dx = sh_px[j] - x;
-        float dy = sh_py[j] - y;
+        float dx = __shfl_sync(FULL_MASK, my_x, j) - x;
+        float dy = __shfl_sync(FULL_MASK, my_y, j) - y;
         float distsq = dx * dx + dy * dy;
         distsq += SOFTENING;
         float inv_dist = rsqrtf(distsq);
@@ -58,8 +56,6 @@ __global__ void nbody_forces(const float *__restrict__ px, const float *__restri
         fx_acc += dx * fmag;
         fy_acc += dy * fmag;
       }
-
-      __syncthreads();
     }
     // Move accumulators to global memory
 
@@ -94,10 +90,8 @@ template <unsigned int threads, unsigned int blocks>
 void step(cudaStream_t compute_stream,
           float *d_px, float *d_py, float *d_vx, float *d_vy, float *d_fx, float *d_fy)
 {
-  size_t smem_size = threads * sizeof(float) * 2;
-
   // Compute forces
-  nbody_forces<threads><<<blocks, threads, smem_size, compute_stream>>>(d_px, d_py, d_fx, d_fy);
+  nbody_forces<threads><<<blocks, threads, 0, compute_stream>>>(d_px, d_py, d_fx, d_fy);
   getLastCudaError("Force computation failed");
 
   // Update positions

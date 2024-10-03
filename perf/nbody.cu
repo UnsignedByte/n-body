@@ -2,9 +2,9 @@
 #include <chrono>
 
 #define TESTS 1000
-#define N 1024 * 128
+#define N 108 * 512 * 6
 #define BLOCK_SIZE 512
-#define GRID_SIZE N / BLOCK_SIZE
+#define GRID_SIZE 108
 
 #include "step.hu"
 
