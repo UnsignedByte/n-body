@@ -1,0 +1,108 @@
+#ifndef STEP_H
+#define STEP_H
+
+#include <stdio.h>
+#include "helper_cuda.hu"
+#define FULL_MASK 0xffffffff
+#ifndef GRAVITY
+#define GRAVITY 0.00001f
+#endif
+#ifndef SOFTENING
+#define SOFTENING 0.01f
+#endif
+#ifndef DELTA_T
+#define DELTA_T 0.01f
+#endif
+#ifndef N
+#define N 1024 * 16
+#endif
+
+template <unsigned int blockSize>
+__global__ void nbody_forces(const float *__restrict__ px, const float *__restrict__ py, float *__restrict__ fx, float *__restrict__ fy)
+{
+  unsigned int tid = threadIdx.x;
+  for (unsigned int i = blockIdx.x * blockSize + tid; i < N; i += gridDim.x * blockSize)
+  {
+    __shared__ float sh_px[blockSize], sh_py[blockSize];
+
+    // Register accumulators
+    float fx_acc = 0.0f, fy_acc = 0.0f;
+
+    // Move target data to registers
+    float x = px[i];
+    float y = py[i];
+
+    // Iterate one block at a time to allow for shared memory coalescing
+    for (unsigned int block_i = 0; block_i < N; block_i += blockSize)
+    {
+      // Load shared memory
+      sh_px[tid] = px[block_i + tid];
+      sh_py[tid] = py[block_i + tid];
+
+      __syncthreads();
+
+      // Compute forces
+      for (unsigned int j = 0; j < blockSize; j++)
+      {
+        float dx = sh_px[j] - x;
+        float dy = sh_py[j] - y;
+        float distsq = dx * dx + dy * dy;
+        distsq += SOFTENING;
+        float inv_dist = rsqrtf(distsq);
+        float inv_dist3 = inv_dist * inv_dist * inv_dist;
+
+        float fmag = inv_dist3 * GRAVITY;
+
+        fx_acc += dx * fmag;
+        fy_acc += dy * fmag;
+      }
+
+      __syncthreads();
+
+      // Move accumulators to global memory
+    }
+
+    fx[i] = fx_acc;
+    fy[i] = fy_acc;
+  }
+}
+
+__global__ void update_pos(float *__restrict__ px, float *__restrict__ py, float *__restrict__ vx, float *__restrict__ vy, const float *__restrict__ fx, const float *__restrict__ fy)
+{
+
+  for (unsigned int i = blockIdx.x * blockDim.x + threadIdx.x; i < N; i += gridDim.x * blockDim.x)
+  {
+    float ax = fx[i];
+    float ay = fy[i];
+    float vx_i = vx[i];
+    float vy_i = vy[i];
+
+    vx_i += ax * DELTA_T;
+    vy_i += ay * DELTA_T;
+
+    px[i] += vx_i * DELTA_T;
+    py[i] += vy_i * DELTA_T;
+
+    vx[i] = vx_i;
+    vy[i] = vy_i;
+  }
+}
+
+// Execute one step
+template <unsigned int threads, unsigned int blocks>
+void step(cudaStream_t compute_stream,
+          float *d_px, float *d_py, float *d_vx, float *d_vy, float *d_fx, float *d_fy)
+{
+  unsigned long smem_size = threads * sizeof(float) * 2;
+
+  // Compute forces
+  nbody_forces<threads><<<blocks, threads, smem_size, compute_stream>>>(d_px, d_py, d_fx, d_fy);
+  getLastCudaError("Force computation failed");
+
+  // Update positions
+  update_pos<<<blocks, threads, 0, compute_stream>>>(d_px, d_py, d_vx, d_vy, d_fx, d_fy);
+
+  getLastCudaError("Update position failed");
+}
+
+#endif

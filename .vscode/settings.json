@@ -1,0 +1,8 @@
+{
+  "files.associations": {
+    "*.v": "systemverilog",
+    "cstdio": "cpp",
+    "*.hu": "c",
+    "chrono": "cpp"
+  }
+}
