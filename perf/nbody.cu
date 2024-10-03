@@ -1,10 +1,10 @@
 #include <stdio.h>
 #include <chrono>
 
-#define TESTS 10
-#define N 1024 * 1024 * 1
-#define BLOCK_SIZE 256
-#define GRID_SIZE 1024
+#define TESTS 1000
+#define N 1024 * 128
+#define BLOCK_SIZE 512
+#define GRID_SIZE N / BLOCK_SIZE
 
 #include "step.hu"
 
@@ -72,8 +72,8 @@ int main()
   auto end = std::chrono::high_resolution_clock::now();
 
   // Print the time
-  printf("Average time (ms): %lf\n", (double)std::chrono::duration_cast<std::chrono::nanoseconds>((end - start) / TESTS).count() / 1000000.);
-  printf("Expected FPS: %lf\n", 1000000000. / (double)std::chrono::duration_cast<std::chrono::nanoseconds>((end - start) / TESTS).count());
+  printf("Average time (ms): %lf\n", (double)std::chrono::duration_cast<std::chrono::nanoseconds>((end - start)).count() / 1000000. / TESTS);
+  printf("Expected FPS: %lf\n", 1000000000. * TESTS / (double)std::chrono::duration_cast<std::chrono::nanoseconds>((end - start)).count());
 
   // Free memory
   checkCudaErrors(cudaFree(d_px));

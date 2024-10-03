@@ -20,10 +20,11 @@
 template <unsigned int blockSize>
 __global__ void nbody_forces(const float *__restrict__ px, const float *__restrict__ py, float *__restrict__ fx, float *__restrict__ fy)
 {
+  __shared__ float sh_px[blockSize], sh_py[blockSize];
+
   unsigned int tid = threadIdx.x;
   for (unsigned int i = blockIdx.x * blockSize + tid; i < N; i += gridDim.x * blockSize)
   {
-    __shared__ float sh_px[blockSize], sh_py[blockSize];
 
     // Register accumulators
     float fx_acc = 0.0f, fy_acc = 0.0f;
@@ -41,6 +42,7 @@ __global__ void nbody_forces(const float *__restrict__ px, const float *__restri
 
       __syncthreads();
 
+#pragma unroll
       // Compute forces
       for (unsigned int j = 0; j < blockSize; j++)
       {
@@ -58,9 +60,8 @@ __global__ void nbody_forces(const float *__restrict__ px, const float *__restri
       }
 
       __syncthreads();
-
-      // Move accumulators to global memory
     }
+    // Move accumulators to global memory
 
     fx[i] = fx_acc;
     fy[i] = fy_acc;
@@ -93,7 +94,7 @@ template <unsigned int threads, unsigned int blocks>
 void step(cudaStream_t compute_stream,
           float *d_px, float *d_py, float *d_vx, float *d_vy, float *d_fx, float *d_fy)
 {
-  unsigned long smem_size = threads * sizeof(float) * 2;
+  size_t smem_size = threads * sizeof(float) * 2;
 
   // Compute forces
   nbody_forces<threads><<<blocks, threads, smem_size, compute_stream>>>(d_px, d_py, d_fx, d_fy);
