@@ -24,33 +24,27 @@ int main()
   printf("Expected Memory usage: %lu MB\n", (sizeof(float) * N * 6) / 1024 / 1024);
 
   // Allocate px and py in host memory
-  float *h_px, *h_py;
-  checkCudaErrors(cudaMallocHost(&h_px, sizeof(float) * N));
-  checkCudaErrors(cudaMallocHost(&h_py, sizeof(float) * N));
+  float2 *h_p;
+  checkCudaErrors(cudaMallocHost(&h_p, sizeof(float2) * N));
 
   // Fill with random values in the screen
   for (int i = 0; i < N; i++)
   {
-    h_px[i] = randf() * width;
-    h_py[i] = randf() * height;
+    h_p[i].x = randf() * width;
+    h_p[i].y = randf() * height;
   }
 
   // Allocate vectors in device memory
-  float *d_px, *d_py, *d_vx, *d_vy, *d_fx, *d_fy;
-  checkCudaErrors(cudaMalloc(&d_px, sizeof(float) * N));
-  checkCudaErrors(cudaMalloc(&d_py, sizeof(float) * N));
-  checkCudaErrors(cudaMalloc(&d_vx, sizeof(float) * N));
-  checkCudaErrors(cudaMalloc(&d_vy, sizeof(float) * N));
-  checkCudaErrors(cudaMalloc(&d_fx, sizeof(float) * N));
-  checkCudaErrors(cudaMalloc(&d_fy, sizeof(float) * N));
+  float2 *d_p, *d_v, *d_f;
+  checkCudaErrors(cudaMalloc(&d_p, sizeof(float2) * N));
+  checkCudaErrors(cudaMalloc(&d_v, sizeof(float2) * N));
+  checkCudaErrors(cudaMalloc(&d_f, sizeof(float2) * N));
 
   // Copy host positions to device
-  checkCudaErrors(cudaMemcpy(d_px, h_px, sizeof(float) * N, cudaMemcpyHostToDevice));
-  checkCudaErrors(cudaMemcpy(d_py, h_py, sizeof(float) * N, cudaMemcpyHostToDevice));
+  checkCudaErrors(cudaMemcpy(d_p, h_p, sizeof(float2) * N, cudaMemcpyHostToDevice));
 
   // Vectors can be initialized with zeros
-  checkCudaErrors(cudaMemset(d_vx, 0, sizeof(float) * N));
-  checkCudaErrors(cudaMemset(d_vy, 0, sizeof(float) * N));
+  checkCudaErrors(cudaMemset(d_v, 0, sizeof(float2) * N));
 
   // Force vectors do not need to be initialized
 
@@ -63,7 +57,7 @@ int main()
   // Launch the kernel
   for (int i = 0; i < TESTS; i++)
   {
-    step<BLOCK_SIZE, GRID_SIZE>(compute_stream, d_px, d_py, d_vx, d_vy, d_fx, d_fy);
+    step<BLOCK_SIZE, GRID_SIZE>(compute_stream, d_p, d_v, d_f);
   }
 
   // Wait for the stream to finish
@@ -76,10 +70,7 @@ int main()
   printf("Expected FPS: %lf\n", 1000000000. * TESTS / (double)std::chrono::duration_cast<std::chrono::nanoseconds>((end - start)).count());
 
   // Free memory
-  checkCudaErrors(cudaFree(d_px));
-  checkCudaErrors(cudaFree(d_py));
-  checkCudaErrors(cudaFree(d_vx));
-  checkCudaErrors(cudaFree(d_vy));
-  checkCudaErrors(cudaFree(d_fx));
-  checkCudaErrors(cudaFree(d_fy));
+  checkCudaErrors(cudaFree(d_p));
+  checkCudaErrors(cudaFree(d_v));
+  checkCudaErrors(cudaFree(d_f));
 }
