@@ -12,23 +12,116 @@
 
 #include "step.cuh"
 
+unsigned int window_width = 2560,
+             window_height = 1400;
+
+float height = 500.;
+float width = 500.;
+float2 center = {0, 0};
+
+bool mouse1_down = false;
+
+double mouse_x, mouse_y;
+
 float randf()
 {
   return (float)((double)rand() / RAND_MAX);
 }
 
-void resize(GLFWwindow *window, int width, int height)
+void update_view()
 {
-  glViewport(0, 0, width, height);
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  glOrtho(0, width, height, 0, -1, 1);
+  glOrtho(center.x - width / 2, center.x + width / 2, center.y - height / 2, center.y + height / 2, -1, 1);
+}
+
+void resize(GLFWwindow *window, int new_window_width, int new_window_height)
+{
+  window_width = new_window_width;
+  window_height = new_window_height;
+
+  // Adjust width to the aspect ratio
+  width = height * (float)window_width / (float)window_height;
+
+  glViewport(0, 0, window_width, window_height);
+  update_view();
+}
+
+void input_handler(GLFWwindow *window, int key, int scancode, int action, int mods)
+{
+  if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+    glfwSetWindowShouldClose(window, GLFW_TRUE);
+
+  if (key == GLFW_KEY_W && action != GLFW_RELEASE)
+  {
+    center.y += height / 50.;
+    update_view();
+  }
+  if (key == GLFW_KEY_S && action != GLFW_RELEASE)
+  {
+    center.y -= height / 50.;
+    update_view();
+  }
+  if (key == GLFW_KEY_A && action != GLFW_RELEASE)
+  {
+    center.x -= height / 50.;
+    update_view();
+  }
+  if (key == GLFW_KEY_D && action != GLFW_RELEASE)
+  {
+    center.x += height / 50.;
+    update_view();
+  }
+}
+
+void scroll_handler(GLFWwindow *window, double xoffset, double yoffset)
+{
+  double normalized_x = 2.f * mouse_x / window_width - 1.f;
+  double normalized_y = 1.f - 2.f * mouse_y / window_height;
+
+  // get the position of the mouse in the world coordinates
+  float xpos = normalized_x * width / 2 + center.x;
+  float ypos = normalized_y * height / 2 + center.y;
+
+  // get the new width
+  width *= 1 + yoffset / 10.;
+  height *= 1 + yoffset / 10.;
+
+  // adjust the center to keep the mouse position fixed
+  center.x = xpos - normalized_x * width / 2;
+  center.y = ypos - normalized_y * height / 2;
+  update_view();
+}
+
+void mouse_handler(GLFWwindow *window, int button, int action, int mods)
+{
+  if (button == GLFW_MOUSE_BUTTON_1 && action == GLFW_PRESS)
+  {
+    mouse1_down = true;
+  }
+  if (button == GLFW_MOUSE_BUTTON_1 && action == GLFW_RELEASE)
+  {
+    mouse1_down = false;
+  }
+}
+
+void pan_handler(GLFWwindow *window, double xpos, double ypos)
+{
+  if (mouse1_down)
+  {
+    center.x -= (xpos - mouse_x) * width / window_width;
+    center.y += (ypos - mouse_y) * height / window_height;
+    update_view();
+  }
+
+  mouse_x = xpos;
+  mouse_y = ypos;
 }
 
 int main()
 {
-  unsigned int width = 2560,
-               height = 1400;
+  unsigned int window_width = 2560,
+               window_height = 1400;
 
   float start_radius = 100.0f;
 
@@ -41,7 +134,7 @@ int main()
   /* Create a windowed mode window and its OpenGL context */
   char window_name[100];
   sprintf(window_name, "Particle simulation with %d particles", N);
-  window = glfwCreateWindow(width, height, window_name, NULL, NULL);
+  window = glfwCreateWindow(window_width, window_height, window_name, NULL, NULL);
   if (!window)
   {
     glfwTerminate();
@@ -51,17 +144,24 @@ int main()
   /* Make the window's context current */
   glfwMakeContextCurrent(window);
 
-  resize(window, width, height);
+  resize(window, window_width, window_height);
   glfwSetFramebufferSizeCallback(window, resize);
+
+  /// Set up callbacks
+  glfwSetKeyCallback(window, input_handler);
+  glfwSetScrollCallback(window, scroll_handler);
+  glfwSetMouseButtonCallback(window, mouse_handler);
+  glfwSetCursorPosCallback(window, pan_handler);
 
   cudaSetDevice(0);
 
   statDevice();
 
   // Allocate px and py in host memory
-  float2 *h_p;
+  float2 *h_p, *h_v;
   float2 *d_p, *d_v, *d_f;
   checkCudaErrors(cudaMallocHost(&h_p, sizeof(float2) * N));
+  checkCudaErrors(cudaMallocHost(&h_v, sizeof(float2) * N));
 
   // Fill with random values in the screen
   for (int i = 0; i < N; i++)
@@ -69,8 +169,12 @@ int main()
     float theta = randf() * 2 * M_PI;
     float distance = randf() * start_radius;
 
-    h_p[i].x = width / 2 + distance * cos(theta);
-    h_p[i].y = height / 2 + distance * sin(theta);
+    h_p[i].x = distance * cos(theta);
+    h_p[i].y = distance * sin(theta);
+
+    // Random velocity
+    h_v[i].x = (randf() * 2 - 1) * start_radius / 10;
+    h_v[i].y = (randf() * 2 - 1) * start_radius / 10;
   }
 
   printf("Initialized %d particles\n", N);
@@ -106,8 +210,9 @@ int main()
   checkCudaErrors(cudaMalloc(&d_v, positions_size));
   checkCudaErrors(cudaMalloc(&d_f, positions_size));
 
-  // Vectors must be initialized with zeros
-  checkCudaErrors(cudaMemset(d_v, 0, positions_size));
+  // Copy velocities to the device
+  checkCudaErrors(cudaMemcpy(d_v, h_v, positions_size, cudaMemcpyHostToDevice));
+
   // Force vectors do not need to be initialized
 
   cudaStream_t compute_stream;
