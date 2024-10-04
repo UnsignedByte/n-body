@@ -30,6 +30,8 @@ int main()
   unsigned int width = 2560,
                height = 1400;
 
+  float start_radius = 100.0f;
+
   GLFWwindow *window;
 
   /* Initialize the library */
@@ -64,8 +66,11 @@ int main()
   // Fill with random values in the screen
   for (int i = 0; i < N; i++)
   {
-    h_p[i].x = randf() * width;
-    h_p[i].y = randf() * height;
+    float theta = randf() * 2 * M_PI;
+    float distance = randf() * start_radius;
+
+    h_p[i].x = width / 2 + distance * cos(theta);
+    h_p[i].y = height / 2 + distance * sin(theta);
   }
 
   printf("Initialized %d particles\n", N);
