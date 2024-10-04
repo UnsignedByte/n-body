@@ -2,11 +2,15 @@
 #include <GLFW/glfw3.h>
 #include <cuda_gl_interop.h>
 #include "helper_cuda.hu"
-#include "step.hu"
 
 #define N 108 * 512 * 6
 #define BLOCK_SIZE 512
 #define GRID_SIZE 108
+#define GRAVITY 1.f
+#define SOFTENING 0.001f
+#define DELTA_T 0.01f
+
+#include "step.hu"
 
 float randf()
 {
@@ -23,8 +27,8 @@ void resize(GLFWwindow *window, int width, int height)
 
 int main()
 {
-  unsigned int width = 800,
-               height = 600;
+  unsigned int width = 2560,
+               height = 1400;
 
   GLFWwindow *window;
 
@@ -33,7 +37,9 @@ int main()
     return -1;
 
   /* Create a windowed mode window and its OpenGL context */
-  window = glfwCreateWindow(width, height, "Hello World", NULL, NULL);
+  char window_name[100];
+  sprintf(window_name, "Particle simulation with %d particles", N);
+  window = glfwCreateWindow(width, height, window_name, NULL, NULL);
   if (!window)
   {
     glfwTerminate();
@@ -52,6 +58,7 @@ int main()
 
   // Allocate px and py in host memory
   float2 *h_p;
+  float2 *d_p, *d_v, *d_f;
   checkCudaErrors(cudaMallocHost(&h_p, sizeof(float2) * N));
 
   // Fill with random values in the screen
@@ -71,8 +78,6 @@ int main()
 
   size_t positions_size = N * sizeof(float2);
 
-  // Create buffer object and register it with CUDA
-  cudaGraphicsResource_t positions_resource;
   GLuint positions;
   glGenBuffers(1, &positions);
   // Copy to the openGL buffer
@@ -80,13 +85,19 @@ int main()
   glBufferData(GL_ARRAY_BUFFER, positions_size, h_p, GL_DYNAMIC_DRAW);
   glBindBuffer(GL_ARRAY_BUFFER, 0);
 
+#ifdef __WSL__
+  // WSL does not support OpenGL interoperability
+  checkCudaErrors(cudaMalloc(&d_p, positions_size));
+  checkCudaErrors(cudaMemcpy(d_p, h_p, positions_size, cudaMemcpyHostToDevice));
+#else
+  // Create buffer object and register it with CUDA
+  cudaGraphicsResource_t positions_resource;
+
   // Register the buffer with CUDA
   checkCudaErrors(cudaGraphicsGLRegisterBuffer(&positions_resource, positions, cudaGraphicsRegisterFlagsNone));
-
-  checkCudaErrors(cudaFreeHost(h_p));
+#endif
 
   // Allocate vectors in device memory
-  float2 *d_p, *d_v, *d_f;
   checkCudaErrors(cudaMalloc(&d_v, positions_size));
   checkCudaErrors(cudaMalloc(&d_f, positions_size));
 
@@ -108,7 +119,6 @@ int main()
     glClear(GL_COLOR_BUFFER_BIT);
 
     // Draw the particles
-    printf("Drawing %d particles\n", N);
     glBindBuffer(GL_ARRAY_BUFFER, positions);
     glVertexPointer(2, GL_FLOAT, 0, 0);
     glEnableClientState(GL_VERTEX_ARRAY);
@@ -121,23 +131,31 @@ int main()
     /* Poll for and process events */
     glfwPollEvents();
 
+#ifdef __WSL__
     // Launch the kernel
+    step<BLOCK_SIZE, GRID_SIZE>(compute_stream, d_p, d_v, d_f);
+    // Wait for the kernel to finish
+    checkCudaErrors(cudaStreamSynchronize(compute_stream));
 
-    printf("Launching kernel\n");
+    // Copy the results back to the host
+    checkCudaErrors(cudaMemcpy(h_p, d_p, positions_size, cudaMemcpyDeviceToHost));
 
+    // Copy the results to the OpenGL buffer
+    glBindBuffer(GL_ARRAY_BUFFER, positions);
+    glBufferData(GL_ARRAY_BUFFER, positions_size, h_p, GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+#else
+    // Launch the kernel
     checkCudaErrors(cudaGraphicsMapResources(1, &positions_resource, compute_stream));
-    printf("Mapped resources\n");
-
     checkCudaErrors(cudaGraphicsResourceGetMappedPointer((void **)&d_p, &positions_size, positions_resource));
 
-    // printf("Recieved %lu bytes\n", positions_size);
+    step<BLOCK_SIZE, GRID_SIZE>(compute_stream, d_p, d_v, d_f);
 
-    // step<BLOCK_SIZE, GRID_SIZE>(compute_stream, d_p, d_v, d_f);
-
-    // // Wait for the kernel to finish
-    // checkCudaErrors(cudaStreamSynchronize(compute_stream));
-
+    // Wait for the kernel to finish
+    checkCudaErrors(cudaStreamSynchronize(compute_stream));
     cudaGraphicsUnmapResources(1, &positions_resource, compute_stream);
+#endif
   }
 
   glfwTerminate();

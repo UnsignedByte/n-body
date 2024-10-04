@@ -4,6 +4,14 @@ set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
 set(CMAKE_CXX_STANDARD 17)
 
+# Add the __WSL__ macro if we are compiling on WSL
+if (UNIX AND NOT APPLE)
+    execute_process(COMMAND uname -a OUTPUT_VARIABLE UNAME)
+    if (UNAME MATCHES "WSL2")
+        add_compile_definitions(__WSL__)
+    endif()
+endif()
+
 add_compile_options(-O3)
 include_directories(lib third-party/include)
 
