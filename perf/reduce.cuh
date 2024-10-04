@@ -1,8 +1,8 @@
 #ifndef REDUCE_H
 #define REDUCE_H
 
-#include <stdio.h>
-#include "helper_cuda.hu"
+#include <stdio.h>a
+#include "helper_cuda.cuh"
 #define FULL_MASK 0xffffffff
 
 /// Add reduction taken from https://developer.download.nvidia.com/assets/cuda/files/reduction.pdf

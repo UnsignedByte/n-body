@@ -1,5 +1,5 @@
 #include <cstdio>
-#include "lib/helper_cuda.hu"
+#include "lib/helper_cuda.cuh"
 #define N 10000
 
 // Kernel definition

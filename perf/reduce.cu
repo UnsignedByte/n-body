@@ -1,7 +1,7 @@
 #include <cstdio>
 #include <cassert>
-#include "helper_cuda.hu"
-#include "reduce.hu"
+#include "helper_cuda.cuh"
+#include "reduce.cuh"
 #include <chrono>
 #define TESTS 10000
 #define N 1000000

@@ -2,7 +2,7 @@
 #define STEP_H
 
 #include <stdio.h>
-#include "helper_cuda.hu"
+#include "helper_cuda.cuh"
 #define FULL_MASK 0xffffffff
 #ifndef GRAVITY
 #define GRAVITY 0.00001f

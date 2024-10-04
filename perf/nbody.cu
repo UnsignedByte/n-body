@@ -6,7 +6,7 @@
 #define BLOCK_SIZE 512
 #define GRID_SIZE 108
 
-#include "step.hu"
+#include "step.cuh"
 
 float randf()
 {

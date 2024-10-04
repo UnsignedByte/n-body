@@ -1,7 +1,7 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <cuda_gl_interop.h>
-#include "helper_cuda.hu"
+#include "helper_cuda.cuh"
 
 #define N 108 * 512 * 6
 #define BLOCK_SIZE 512
@@ -10,7 +10,7 @@
 #define SOFTENING 0.001f
 #define DELTA_T 0.01f
 
-#include "step.hu"
+#include "step.cuh"
 
 float randf()
 {
