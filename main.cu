@@ -6,7 +6,7 @@
 #define N 108 * 512 * 6
 #define BLOCK_SIZE 512
 #define GRID_SIZE 108
-#define GRAVITY 1.f
+#define GRAVITY 0.001f
 #define SOFTENING 0.001f
 #define DELTA_T 0.01f
 
@@ -15,8 +15,10 @@
 unsigned int window_width = 2560,
              window_height = 1400;
 
-float height = 500.;
-float width = 500.;
+float height = 10.;
+float width = 10.;
+bool paused = true;
+
 float2 center = {0, 0};
 
 bool mouse1_down = false;
@@ -72,6 +74,10 @@ void input_handler(GLFWwindow *window, int key, int scancode, int action, int mo
     center.x += height / 50.;
     update_view();
   }
+  if (key == GLFW_KEY_SPACE && action != GLFW_RELEASE)
+  {
+    paused = !paused;
+  }
 }
 
 void scroll_handler(GLFWwindow *window, double xoffset, double yoffset)
@@ -123,7 +129,7 @@ int main()
   unsigned int window_width = 2560,
                window_height = 1400;
 
-  float start_radius = 100.0f;
+  float aspect_ratio = (float)window_width / (float)window_height;
 
   GLFWwindow *window;
 
@@ -167,14 +173,25 @@ int main()
   for (int i = 0; i < N; i++)
   {
     float theta = randf() * 2 * M_PI;
-    float distance = randf() * start_radius;
+    float distance = 0;
+    int num_samples = 3;
+    for (int j = 0; j < num_samples; j++)
+    {
+      distance += randf();
+    }
+    distance = sqrtf(distance / num_samples);
 
-    h_p[i].x = distance * cos(theta);
-    h_p[i].y = distance * sin(theta);
+    float cosine = cosf(theta);
+    float sine = sinf(theta);
 
-    // Random velocity
-    h_v[i].x = (randf() * 2 - 1) * start_radius / 10;
-    h_v[i].y = (randf() * 2 - 1) * start_radius / 10;
+    h_p[i].x = distance * cosine;
+    h_p[i].y = distance * sine;
+
+    float orbital_velocity = sqrtf(10. / distance);
+
+    // Velocity around the center
+    h_v[i].x = -sine * orbital_velocity;
+    h_v[i].y = cosine * orbital_velocity;
   }
 
   printf("Initialized %d particles\n", N);
@@ -240,6 +257,11 @@ int main()
 
     /* Poll for and process events */
     glfwPollEvents();
+
+    if (paused)
+    {
+      continue;
+    }
 
 #ifdef __WSL__
     // Launch the kernel
